@@ -1,26 +1,54 @@
 import 'package:flutter/cupertino.dart';
-import 'package:open_weather_example_flutter/src/api/api.dart';
-import 'package:open_weather_example_flutter/src/api/api_keys.dart';
+import 'package:open_weather_example_flutter/src/features/weather/data/entities/forecast_data.dart';
+import 'package:open_weather_example_flutter/src/features/weather/data/entities/weather_data.dart';
 import 'package:open_weather_example_flutter/src/features/weather/data/weather_repository.dart';
-import 'package:http/http.dart' as http;
 
 class WeatherProvider extends ChangeNotifier {
-  HttpWeatherRepository repository = HttpWeatherRepository(
-    api: OpenWeatherMapAPI(sl<String>(instanceName: 'api_key')),
-    client: http.Client(),
-  );
+  WeatherProvider({required HttpWeatherRepository repository}) : _repository = repository;
+
+  final HttpWeatherRepository _repository;
 
   String city = 'London';
   WeatherData? currentWeatherProvider;
   ForecastData? hourlyWeatherProvider;
+  bool _isLoading = false;
+  TemperatureUnit _temperatureUnit = TemperatureUnit.celsius;
+
+  bool get isLoading => _isLoading;
+
+  TemperatureUnit get temperatureUnit => _temperatureUnit;
 
   Future<void> getWeatherData() async {
-    final weather = await repository.getWeather(city: city);
-    //TODO set the weather and fetch forecast after
+    _isLoading = true;
+    final weather = await _repository.getWeather(city: city);
+    currentWeatherProvider = weather;
+    await getForecastData();
+
+    _isLoading = false;
+    notifyListeners();
   }
 
   Future<void> getForecastData() async {
-    final forecast = await repository.getForecast(city: city);
-    //TODO set the forecast
+    hourlyWeatherProvider = await _repository.getForecast(city: city);
+  }
+
+  void switchUnit(TemperatureUnit temperatureUnit) {
+    switch (temperatureUnit) {
+      case TemperatureUnit.celsius:
+        currentWeatherProvider?.temp.temp = currentWeatherProvider!.temp.celsius;
+        hourlyWeatherProvider?.hourlyForecasts.forEach((forecast) {
+          forecast.temp.temp = forecast.temp.celsius;
+        });
+      case TemperatureUnit.fahrenheit:
+        currentWeatherProvider?.temp.temp = currentWeatherProvider!.temp.fahrenheit;
+        hourlyWeatherProvider?.hourlyForecasts.forEach((forecast) {
+          forecast.temp.temp = forecast.temp.fahrenheit;
+        });
+    }
+
+    _temperatureUnit = temperatureUnit;
+    notifyListeners();
   }
 }
+
+enum TemperatureUnit { celsius, fahrenheit }
