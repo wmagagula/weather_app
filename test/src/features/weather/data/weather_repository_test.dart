@@ -1,7 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:mocktail/mocktail.dart';
 import 'package:open_weather_example_flutter/src/api/api.dart';
+import 'package:open_weather_example_flutter/src/features/weather/data/api_exception.dart';
+import 'package:open_weather_example_flutter/src/features/weather/data/entities/weather_data.dart';
+// import 'package:open_weather_example_flutter/src/features/weather/data/entities/weather_data.dart';
 import 'package:open_weather_example_flutter/src/features/weather/data/weather_repository.dart';
 
 class MockHttpClient extends Mock implements http.Client {}
@@ -53,32 +58,51 @@ const encodedWeatherJsonResponse = """
   }  
 """;
 
-final expectedWeatherFromJson = Weather(
-  weatherParams: WeatherParams(temp: 282.55, tempMin: 280.37, tempMax: 284.26),
-  weatherInfo: [
-    WeatherInfo(
-      description: 'clear sky',
-      icon: '01d',
-      main: 'Clear',
-    )
-  ],
-  dt: 1560350645,
-);
+final expectedWeatherFromJson = WeatherData.fromJson(jsonDecode(encodedWeatherJsonResponse));
 
 void main() {
+  setUpAll(() {
+    registerFallbackValue(Uri());
+  });
   test('repository with mocked http client, success', () async {
     final mockHttpClient = MockHttpClient();
+    final uri = Uri(scheme: 'https', host: 'api.openweathermap.org', path: '/data/2.5/weather', queryParameters: {
+      "q": 'London',
+      "appid": 'apiKey',
+      "units": "metric",
+      "type": "like",
+      "cnt": "30",
+    });
+
+    when(() => mockHttpClient.get(uri)).thenAnswer((_) =>
+        Future.value(
+          http.Response(encodedWeatherJsonResponse, 200),
+        ));
+
     final api = OpenWeatherMapAPI('apiKey');
     final weatherRepository = HttpWeatherRepository(api: api, client: mockHttpClient);
-    //TODO Mock http and ensure weather is correct
+
+    //act
+    final response = await weatherRepository.getWeather(city: 'London');
+
+    //assert
+    verify(() => mockHttpClient.get(uri)).called(1);
+    expect(response, same(expectedWeatherFromJson)); //this guy is acting funny...
   });
 
   test('repository with mocked http client, failure', () async {
     final mockHttpClient = MockHttpClient();
+    when(() => mockHttpClient.get(any<Uri>())).thenAnswer((_) =>
+        Future.value(
+          http.Response("""Not Found""", 404),
+        ));
     final api = OpenWeatherMapAPI('apiKey');
     final weatherRepository = HttpWeatherRepository(api: api, client: mockHttpClient);
-    //TODO Mock http 404 and ensure api returns CityNotFoundException
-  });
 
-  //TODO test providers data as well
+    try {
+      await weatherRepository.getWeather(city: 'London');
+    } catch (e) {
+      expect(e, CityNotFoundException);
+    }
+  });
 }
